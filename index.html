@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1c1c1c;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0ede8;
+    --muted: #6b6b6b;
+    --accent: #e8d5a3;
+    --hit: #4ade80;
+    --stand: #f87171;
+    --double: #60a5fa;
+    --split: #c084fc;
+    --surrender: #fb923c;
+    --insurance: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── LAYOUT ────────────────────────────────────────────────── */
+  .app-header { display: flex; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--border); }
+  .app-title { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 3px; color: var(--accent); }
+
+  .app-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr auto;
+    height: calc(100vh - 53px);
+  }
+  .panel {
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 20px; overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+  .panel:last-child { border-right: none; }
+  .panel-heading {
+    font-family: 'DM Mono', monospace; font-size: 9px;
+    letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  @media (max-width: 800px) {
+    .app-body { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; }
+    .panel { border-right: none; border-bottom: 1px solid var(--border); overflow-y: visible; }
+    .panel:last-child { border-bottom: none; }
+    .history-bar { grid-column: 1; }
+  }
+
+  /* ── INNER CARDS ───────────────────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .card-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+  /* ── DECISION ──────────────────────────────────────────────── */
+  .decision-wrap {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 14px; padding: 24px 16px 20px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    position: relative; overflow: hidden;
+  }
+  .decision-wrap::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, var(--glow-color, transparent) 0%, transparent 70%);
+    opacity: 0.09; pointer-events: none; transition: all 0.3s;
+  }
+  .decision-lbl { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .decision-letter { font-family: 'Bebas Neue', sans-serif; font-size: 110px; line-height: 1; letter-spacing: -2px; transition: color 0.2s, transform 0.15s; }
+  .decision-letter.pop { transform: scale(1.1); }
+  .decision-action { font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 1px; }
+  .decision-reason { font-size: 11px; color: var(--muted); text-align: center; font-family: 'DM Mono', monospace; line-height: 1.5; min-height: 28px; }
+
+  /* ── COUNT BLOCKS ──────────────────────────────────────────── */
+  .count-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .count-block {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 14px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .count-block-lbl { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+  .count-block-val { font-family: 'Bebas Neue', sans-serif; font-size: 52px; line-height: 1; letter-spacing: -1px; transition: color 0.2s; }
+  .count-block-sub { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+  /* ── INSURANCE ─────────────────────────────────────────────── */
+  .insurance-banner { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); border-radius: 10px; padding: 10px 14px; font-size: 11px; font-family: 'DM Mono', monospace; color: var(--insurance); text-align: center; display: none; }
+  .insurance-banner.show { display: block; }
+
+  /* ── HAND ──────────────────────────────────────────────────── */
+  .hand-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .hand-slot { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+  .hand-slot-lbl { font-size: 9px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: 1px; text-transform: uppercase; }
+
+  /* ── CARD SVG ──────────────────────────────────────────────── */
+  .card-svg-wrap { position: relative; width: 52px; height: 74px; }
+  .card-svg-wrap svg { width: 52px; height: 74px; display: block; }
+  .card-select-hidden { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; font-size: 16px; }
+
+  /* ── FORM ELEMENTS ─────────────────────────────────────────── */
+  input[type=number] { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px; padding: 8px 10px; border-radius: 8px; width: 100%; }
+  input[type=number]:focus { outline: none; border-color: var(--accent); }
+
+  /* ── CUSTOM DROPDOWN ───────────────────────────────────────── */
+  .cdd { position: relative; display: inline-flex; flex-direction: column; width: 100%; }
+  .cdd-trigger {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: border-color 0.15s; user-select: none; white-space: nowrap;
+  }
+  .cdd-trigger:hover { border-color: var(--accent); }
+  .cdd.open .cdd-trigger { border-color: var(--accent); border-radius: 8px 8px 0 0; }
+  .cdd-arrow { font-size: 9px; color: var(--muted); transition: transform 0.15s; flex-shrink: 0; }
+  .cdd.open .cdd-arrow { transform: rotate(180deg); }
+  .cdd-list {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 500;
+    background: var(--surface2); border: 1px solid var(--accent);
+    border-top: none; border-radius: 0 0 8px 8px;
+    overflow: hidden; flex-direction: column;
+  }
+  .cdd.open .cdd-list { display: flex; }
+  .cdd-option {
+    padding: 9px 10px; font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--muted); cursor: pointer; transition: background 0.1s, color 0.1s;
+    border-top: 1px solid var(--border);
+  }
+  .cdd-option:first-child { border-top: none; }
+  .cdd-option:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .cdd-option.selected { color: var(--accent); }
+  .cdd-option.selected::after { content: ' ✓'; font-size: 10px; }
+
+  /* ── BET ───────────────────────────────────────────────────── */
+  .bet-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .bet-input-wrap { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 80px; }
+  .bet-input-wrap label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: 1px; }
+  .bet-rec { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .bet-rec-lbl { font-size: 9px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: 1px; text-transform: uppercase; }
+  .bet-rec-amt { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--accent); letter-spacing: 1px; }
+  .bet-rec-sub { font-size: 9px; color: var(--muted); font-family: 'DM Mono', monospace; text-align: right; }
+
+  /* ── SHOE / TICKER ─────────────────────────────────────────── */
+  .shoe-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: stretch; }
+  .shoe-left { display: flex; flex-direction: column; gap: 10px; }
+  .deck-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+  .deck-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ticker-row { display: flex; align-items: stretch; background: var(--surface2); border: 1px solid var(--border2); border-radius: 10px; overflow: hidden; }
+  .ticker-btn { background: none; border: none; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 20px; width: 40px; height: 48px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
+  .ticker-btn:hover { background: rgba(255,255,255,0.05); color: var(--accent); }
+  .ticker-display { flex: 1; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  .ticker-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--accent); letter-spacing: 1px; }
+  .reset-shoe-btn { background: transparent; border: 1px solid var(--border2); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 1px; padding: 0 16px; border-radius: 10px; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 64px; }
+  .reset-shoe-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .reset-shoe-icon { font-size: 24px; line-height: 1; }
+
+  /* ── CARD COUNT GRID ───────────────────────────────────────── */
+  .card-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  .card-count-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; padding: 8px 2px; border-radius: 7px; cursor: pointer; transition: background 0.15s, transform 0.1s; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .card-count-btn:hover { background: var(--surface); border-color: var(--border2); }
+  .card-count-btn:active { transform: scale(0.93); }
+  .card-count-btn .clbl { font-size: 14px; }
+  .card-count-btn .ctag { font-size: 8px; }
+  .card-count-btn.low .ctag { color: var(--hit); }
+  .card-count-btn.high .ctag { color: var(--stand); }
+  .card-count-btn.neutral .ctag { color: var(--muted); }
+
+  /* ── HISTORY BAR ───────────────────────────────────────────── */
+  .history-bar {
+    grid-column: 1 / -1; border-top: 1px solid var(--border);
+    background: var(--surface); padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    overflow-x: auto; scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent; min-height: 56px; flex-shrink: 0;
+  }
+  .history-bar::-webkit-scrollbar { height: 3px; }
+  .history-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  .history-empty { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 1px; white-space: nowrap; opacity: 0.5; }
+  .history-chip { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 5px 8px 5px 10px; flex-shrink: 0; white-space: nowrap; }
+  .history-chip-icon { font-size: 10px; opacity: 0.5; }
+  .history-chip-text { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text); letter-spacing: 0.3px; }
+  .history-chip-tag { font-size: 9px; font-family: 'DM Mono', monospace; padding: 1px 5px; border-radius: 4px; opacity: 0.8; }
+  .history-chip-tag.pos { background: rgba(74,222,128,0.15); color: var(--hit); }
+  .history-chip-tag.neg { background: rgba(248,113,113,0.15); color: var(--stand); }
+  .history-chip-tag.neu { background: rgba(255,255,255,0.06); color: var(--muted); }
+  .history-chip-undo { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 0 2px; line-height: 1; transition: color 0.15s; flex-shrink: 0; }
+  .history-chip-undo:hover { color: var(--stand); }
+
+  /* ── TOOLTIP ───────────────────────────────────────────────── */
+  .tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
+  .tooltip-icon { width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font-size: 8px; font-family: 'DM Mono', monospace; display: inline-flex; align-items: center; justify-content: center; cursor: default; margin-left: 5px; user-select: none; transition: border-color 0.15s, color 0.15s; }
+  .tooltip-icon.active { border-color: var(--accent); color: var(--accent); }
+  .tooltip-box { display: none; position: fixed; background: #1e1e1e; border: 1px solid var(--border2); border-radius: 10px; padding: 10px 12px; width: 240px; z-index: 9999; pointer-events: none; }
+  .tooltip-box.visible { display: block; }
+  .tt-row { display: flex; flex-direction: column; gap: 2px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .tt-row:first-child { padding-top: 0; }
+  .tt-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .tt-title { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; }
+  .tt-desc { font-family: 'DM Sans', sans-serif; font-size: 10px; color: var(--muted); line-height: 1.5; }
+  .tt-mult { font-family: 'DM Mono', monospace; font-size: 9px; color: #555; margin-top: 1px; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">COUNTER</div>
+</header>
+
+<div class="app-body">
+
+  <!-- ══ PANEL 1 — SETUP ══════════════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-heading">Setup</div>
+
+    <!-- BET SPREAD -->
+    <div class="card">
+      <div class="card-label" style="display:flex;align-items:center;">
+        Bet Spread
+        <div class="tooltip-wrap">
+          <span class="tooltip-icon">?</span>
+          <div class="tooltip-box">
+            <div class="tt-row"><div class="tt-title">Conservative — 1–4×</div><div class="tt-desc">Low variance, good cover. Best for avoiding detection or limited bankroll.</div><div class="tt-mult">TC+2→1.5× · TC+3→2× · TC+4→3× · TC+5→4×</div></div>
+            <div class="tt-row"><div class="tt-title">Moderate — 1–8×</div><div class="tt-desc">Balanced EV and variance. Good default for most sessions.</div><div class="tt-mult">TC+2→2× · TC+3→3× · TC+4→6× · TC+5→8×</div></div>
+            <div class="tt-row"><div class="tt-title">Aggressive — 1–12×</div><div class="tt-desc">Max EV, max heat. Needs big bankroll and good cover.</div><div class="tt-mult">TC+2→2× · TC+3→4× · TC+4→8× · TC+5→12×</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="bet-row">
+        <div class="bet-input-wrap"><label>MIN BET ($)</label><input type="number" id="min-bet" value="10" min="1" oninput="recalc()"></div>
+        <div class="bet-input-wrap"><label>MAX BET ($)</label><input type="number" id="max-bet" value="100" min="1" oninput="recalc()"></div>
+        <div class="bet-input-wrap">
+          <label>SPREAD</label>
+          <div class="cdd" id="cdd-spread">
+            <div class="cdd-trigger" onclick="cddToggle('cdd-spread')">
+              <span id="cdd-spread-label">Conservative</span>
+              <span class="cdd-arrow">▾</span>
+            </div>
+            <div class="cdd-list">
+              <div class="cdd-option selected" onclick="cddSelect('cdd-spread','conservative','Conservative',this)">Conservative</div>
+              <div class="cdd-option" onclick="cddSelect('cdd-spread','moderate','Moderate',this)">Moderate</div>
+              <div class="cdd-option" onclick="cddSelect('cdd-spread','aggressive','Aggressive',this)">Aggressive</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bet-rec">
+        <div><div class="bet-rec-lbl">Recommended Bet</div><div class="bet-rec-amt" id="bet-amount">$10</div></div>
+        <div style="text-align:right;"><div class="bet-rec-sub" id="bet-edge">Edge: ~neutral</div><div class="bet-rec-sub" id="bet-mult">1× min bet</div></div>
+      </div>
+    </div>
+
+    <!-- SHOE SETUP -->
+    <div class="card">
+      <div class="card-label">Shoe Setup</div>
+      <div class="shoe-grid">
+        <div class="shoe-left">
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;">Total Decks</span>
+            <div style="display:flex;gap:6px;">
+              <button class="deck-btn" onclick="setDecks(4)" id="d4">4D</button>
+              <button class="deck-btn" onclick="setDecks(6)" id="d6">6D</button>
+              <button class="deck-btn active" onclick="setDecks(8)" id="d8">8D</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;">Decks Remaining</span>
+            <div class="ticker-row">
+              <button class="ticker-btn" onclick="adjustDecks(-0.5)">−</button>
+              <div class="ticker-display"><div class="ticker-val" id="dr-label">8.0</div></div>
+              <button class="ticker-btn" onclick="adjustDecks(0.5)">+</button>
+            </div>
+          </div>
+        </div>
+        <button class="reset-shoe-btn" onclick="resetAll()">
+          <span class="reset-shoe-icon">↺</span>
+          <span>New Shoe</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PANEL 2 — ACTION ══════════════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-heading">Action</div>
+
+    <div class="count-grid">
+      <div class="count-block">
+        <div class="count-block-lbl">Running Count</div>
+        <div class="count-block-val" id="rc-display" style="color:var(--text)">0</div>
+        <div class="count-block-sub">Hi-Lo total</div>
+      </div>
+      <div class="count-block">
+        <div class="count-block-lbl">True Count</div>
+        <div class="count-block-val" id="tc-display" style="color:var(--text)">0.0</div>
+        <div class="count-block-sub">RC ÷ decks left</div>
+      </div>
+    </div>
+
+    <div class="insurance-banner" id="insurance-banner">★ TC ≥ +3 — TAKE INSURANCE</div>
+
+    <div class="decision-wrap" id="decision-card">
+      <div class="decision-lbl">Your Move</div>
+      <div class="decision-letter" id="decision-letter" style="color:var(--hit)">H</div>
+      <div class="decision-action" id="decision-text">HIT</div>
+      <div class="decision-reason" id="decision-reason">Set your hand and dealer upcard</div>
+    </div>
+
+    <!-- DEALER UP -->
+    <div class="card" style="align-items:center;">
+      <div class="card-label" style="align-self:stretch;">Dealer Up Card</div>
+      <div class="card-svg-wrap" style="width:72px;height:102px;">
+        <svg id="dealer-card-svg" viewBox="0 0 56 80" xmlns="http://www.w3.org/2000/svg" style="width:72px;height:102px;"></svg>
+        <select class="card-select-hidden" id="dealer-select" onchange="onDealerChange(this)"></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PANEL 3 — PLAY ════════════════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-heading">Play</div>
+
+    <!-- YOUR HAND -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="card-label">Your Hand</div>
+        <button onclick="resetHand()" style="background:none;border:1px solid var(--border2);color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:3px 8px;border-radius:6px;cursor:pointer;transition:all 0.15s;text-transform:uppercase;" onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseleave="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">↺ Reset</button>
+      </div>
+      <div class="hand-row" id="hand-row"></div>
+    </div>
+
+    <!-- CARDS SEEN -->
+    <div class="card">
+      <div class="card-label">Cards Seen — Tap to Count</div>
+      <div class="card-grid" id="card-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY BAR ═══════════════════════════════════════════ -->
+  <div class="history-bar" id="history-bar">
+    <span class="history-empty" id="history-empty">No actions yet</span>
+  </div>
+
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let runningCount = 0;
+let totalDecks = 8;
+let decksRemaining = 8;
+let handCards = [10, 3];
+let dealerCard = 11;
+let isSoft = false;
+
+function hiLoTag(v) {
+  if (v >= 2 && v <= 6) return +1;
+  if (v >= 7 && v <= 9) return  0;
+  return -1;
+}
+
+const CARD_OPTIONS = [
+  {label:'2',val:2},{label:'3',val:3},{label:'4',val:4},{label:'5',val:5},
+  {label:'6',val:6},{label:'7',val:7},{label:'8',val:8},{label:'9',val:9},
+  {label:'10',val:10},{label:'J',val:10},{label:'Q',val:10},{label:'K',val:10},
+  {label:'A',val:11},
+];
+
+// ─── CUSTOM DROPDOWN ─────────────────────────────────────────────────────────
+const cddValues = {};
+
+function cddToggle(id) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.cdd.open').forEach(d => d.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
+}
+
+function cddSelect(id, value, label, optEl) {
+  cddValues[id] = value;
+  document.getElementById(id + '-label').textContent = label;
+  document.querySelectorAll('#' + id + ' .cdd-option').forEach(o => o.classList.remove('selected'));
+  optEl.classList.add('selected');
+  document.getElementById(id).classList.remove('open');
+  recalc();
+}
+
+function cddGet(id) { return cddValues[id]; }
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.cdd')) document.querySelectorAll('.cdd.open').forEach(d => d.classList.remove('open'));
+});
+
+cddValues['cdd-spread'] = 'conservative';
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+let history = [];
+let historyId = 0;
+
+function pushHistory(entry) {
+  const id = ++historyId;
+  const record = { id, ...entry };
+  history.push(record);
+  renderHistoryChip(record);
+  const bar = document.getElementById('history-bar');
+  bar.scrollLeft = bar.scrollWidth;
+  document.getElementById('history-empty').style.display = 'none';
+}
+
+function renderHistoryChip(record) {
+  const bar = document.getElementById('history-bar');
+  const chip = document.createElement('div');
+  chip.className = 'history-chip';
+  chip.id = 'hchip-' + record.id;
+  chip.innerHTML = `
+    <span class="history-chip-icon">${record.icon}</span>
+    <span class="history-chip-text">${record.label}</span>
+    ${record.tagText ? `<span class="history-chip-tag ${record.tagClass}">${record.tagText}</span>` : ''}
+    <button class="history-chip-undo" title="Undo">×</button>
+  `;
+  chip.querySelector('.history-chip-undo').onclick = () => undoEntry(record.id);
+  bar.appendChild(chip);
+}
+
+function undoEntry(id) {
+  const idx = history.findIndex(h => h.id === id);
+  if (idx === -1) return;
+  const record = history[idx];
+  record.undo();
+  const toRemove = history.splice(idx);
+  toRemove.forEach(r => { const el = document.getElementById('hchip-' + r.id); if (el) el.remove(); });
+  if (history.length === 0) document.getElementById('history-empty').style.display = '';
+  updateDisplays(); renderHandRow(); recalc();
+}
+
+function clearHistory() {
+  history = []; historyId = 0;
+  document.getElementById('history-bar').querySelectorAll('.history-chip').forEach(c => c.remove());
+  document.getElementById('history-empty').style.display = '';
+}
+
+function cardName(val) { return val === 11 ? 'A' : String(val); }
+function tagForCount(delta) {
+  if (delta > 0) return { tagText: '+'+delta, tagClass: 'pos' };
+  if (delta < 0) return { tagText: String(delta), tagClass: 'neg' };
+  return { tagText: '0', tagClass: 'neu' };
+}
+
+// ─── SVG CARD ────────────────────────────────────────────────────────────────
+const SUITS = ['♠','♣','♥','♦'];
+function getSuit(val) { return SUITS[val % 4]; }
+function getSuitColor(val) { const s = getSuit(val); return (s==='♥'||s==='♦') ? '#cc3333' : '#1a1a1a'; }
+function getCardLabel(val) { return val === 11 ? 'A' : String(val); }
+
+function renderCardSVG(svgEl, val, faceDown) {
+  if (faceDown) {
+    svgEl.innerHTML = `
+      <rect x="1" y="1" width="54" height="78" rx="7" fill="#1c2340" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+      <rect x="5" y="5" width="46" height="70" rx="5" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="28" y="45" text-anchor="middle" dominant-baseline="central" fill="rgba(255,255,255,0.12)" font-size="20" font-family="Georgia,serif">?</text>`;
+    return;
+  }
+  const lbl = getCardLabel(val);
+  const suit = getSuit(val);
+  const col = getSuitColor(val);
+  svgEl.innerHTML = `
+    <rect x="1" y="1" width="54" height="78" rx="7" fill="#faf6ef" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>
+    <text x="5" y="7" dominant-baseline="hanging" fill="${col}" font-size="12" font-weight="700" font-family="'DM Mono',monospace">${lbl}</text>
+    <text x="5" y="20" dominant-baseline="hanging" fill="${col}" font-size="11" font-family="Georgia,serif">${suit}</text>
+    <text x="28" y="44" text-anchor="middle" dominant-baseline="central" fill="${col}" font-size="26" font-family="Georgia,serif">${suit}</text>
+    <g transform="rotate(180 28 68)">
+      <text x="28" y="61" dominant-baseline="hanging" text-anchor="middle" fill="${col}" font-size="12" font-weight="700" font-family="'DM Mono',monospace">${lbl}</text>
+    </g>`;
+}
+
+// ─── SELECT HELPERS ──────────────────────────────────────────────────────────
+function populateSelect(sel, currentVal) {
+  sel.innerHTML = '';
+  CARD_OPTIONS.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt.val; o.textContent = opt.label;
+    sel.appendChild(o);
+  });
+  for (const o of sel.options) { if (parseInt(o.value) === currentVal) { o.selected = true; break; } }
+}
+
+function onDealerChange(sel) {
+  const prevVal = dealerCard;
+  dealerCard = parseInt(sel.value);
+  renderCardSVG(document.getElementById('dealer-card-svg'), dealerCard, false);
+  pushHistory({
+    icon: '🂠', label: `Dealer: ${cardName(prevVal)} → ${cardName(dealerCard)}`,
+    tagText: null, tagClass: '',
+    undo: () => {
+      dealerCard = prevVal;
+      renderCardSVG(document.getElementById('dealer-card-svg'), prevVal, false);
+      const ds = document.getElementById('dealer-select');
+      for (const o of ds.options) { if (parseInt(o.value) === prevVal) { o.selected = true; break; } }
+    }
+  });
+  recalc();
+}
+
+// ─── RENDER HAND ─────────────────────────────────────────────────────────────
+function renderHandRow() {
+  const row = document.getElementById('hand-row');
+  row.innerHTML = '';
+
+  handCards.forEach((val, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'hand-slot';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'hand-slot-lbl';
+    lbl.textContent = 'Card ' + (idx + 1);
+
+    if (idx >= 2) {
+      const rm = document.createElement('button');
+      rm.textContent = ' ×';
+      rm.style.cssText = 'background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0;';
+      rm.onclick = () => {
+        const removed = handCards[idx];
+        const prevRC = runningCount;
+        runningCount -= hiLoTag(removed);
+        handCards.splice(idx, 1);
+        pushHistory({
+          icon: '✋', label: `Remove card ${idx+1}: ${cardName(removed)}`,
+          ...tagForCount(-hiLoTag(removed)),
+          undo: () => { handCards.splice(idx, 0, removed); runningCount = prevRC; }
+        });
+        renderHandRow(); updateDisplays(); recalc();
+      };
+      lbl.appendChild(rm);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'card-svg-wrap';
+
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgEl.setAttribute('viewBox','0 0 56 80');
+    renderCardSVG(svgEl, val, false);
+
+    const sel = document.createElement('select');
+    sel.className = 'card-select-hidden';
+    populateSelect(sel, val);
+    sel.addEventListener('change', () => {
+      const oldVal = handCards[idx];
+      const newVal = parseInt(sel.value);
+      const prevRC = runningCount;
+      const delta = hiLoTag(newVal) - hiLoTag(oldVal);
+      runningCount -= hiLoTag(oldVal);
+      runningCount += hiLoTag(newVal);
+      handCards[idx] = newVal;
+      renderCardSVG(svgEl, newVal, false);
+      pushHistory({
+        icon: '🂠', label: `Card ${idx+1}: ${cardName(oldVal)} → ${cardName(newVal)}`,
+        ...tagForCount(delta),
+        undo: () => { handCards[idx] = oldVal; runningCount = prevRC; }
+      });
+      updateDisplays(); recalc();
+    });
+
+    wrap.appendChild(svgEl);
+    wrap.appendChild(sel);
+    slot.appendChild(lbl);
+    slot.appendChild(wrap);
+    row.appendChild(slot);
+  });
+
+  // Soft toggle if ace present
+  if (handCards.includes(11)) {
+    const softSlot = document.createElement('div');
+    softSlot.className = 'hand-slot';
+    const softLbl = document.createElement('div');
+    softLbl.className = 'hand-slot-lbl';
+    softLbl.textContent = 'Soft';
+
+    const cddEl = document.createElement('div');
+    cddEl.className = 'cdd';
+    cddEl.id = 'cdd-soft';
+    cddEl.style.minWidth = '70px';
+
+    const trigger = document.createElement('div');
+    trigger.className = 'cdd-trigger';
+    trigger.innerHTML = `<span id="cdd-soft-label">${isSoft ? 'Yes' : 'No'}</span><span class="cdd-arrow">▾</span>`;
+    trigger.onclick = () => cddToggle('cdd-soft');
+
+    const list = document.createElement('div');
+    list.className = 'cdd-list';
+
+    [['Yes','1'],['No','0']].forEach(([label, val]) => {
+      const opt = document.createElement('div');
+      opt.className = 'cdd-option' + ((isSoft && val==='1') || (!isSoft && val==='0') ? ' selected' : '');
+      opt.textContent = label;
+      opt.onclick = () => {
+        isSoft = val === '1';
+        cddValues['cdd-soft'] = val;
+        document.getElementById('cdd-soft-label').textContent = label;
+        list.querySelectorAll('.cdd-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        cddEl.classList.remove('open');
+        recalc();
+      };
+      list.appendChild(opt);
+    });
+
+    cddEl.appendChild(trigger);
+    cddEl.appendChild(list);
+    softSlot.appendChild(softLbl);
+    softSlot.appendChild(cddEl);
+    row.appendChild(softSlot);
+  }
+}
+
+// ─── SHOE ────────────────────────────────────────────────────────────────────
+function setDecks(n) {
+  totalDecks = n;
+  ['d4','d6','d8'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('d'+n).classList.add('active');
+  decksRemaining = Math.min(decksRemaining, n);
+  updateDisplays(); recalc();
+}
+
+function adjustDecks(delta) {
+  const prev = decksRemaining;
+  decksRemaining = Math.max(0.5, Math.min(totalDecks, Math.round((decksRemaining + delta) * 2) / 2));
+  if (decksRemaining === prev) return;
+  pushHistory({
+    icon: '🃏', label: `Decks: ${prev.toFixed(1)} → ${decksRemaining.toFixed(1)}`,
+    tagText: null, tagClass: '',
+    undo: () => { decksRemaining = prev; }
+  });
+  updateDisplays(); recalc();
+}
+
+// ─── DISPLAYS ────────────────────────────────────────────────────────────────
+function trueCount() { return decksRemaining <= 0 ? 0 : Math.round((runningCount / decksRemaining) * 10) / 10; }
+
+function updateDisplays() {
+  const tc = trueCount();
+  const rcEl = document.getElementById('rc-display');
+  const tcEl = document.getElementById('tc-display');
+  rcEl.textContent = runningCount > 0 ? '+'+runningCount : String(runningCount);
+  tcEl.textContent = tc > 0 ? '+'+tc.toFixed(1) : tc.toFixed(1);
+  rcEl.style.color = runningCount > 0 ? 'var(--hit)' : runningCount < 0 ? 'var(--stand)' : 'var(--text)';
+  tcEl.style.color  = tc > 0 ? 'var(--hit)' : tc < 0 ? 'var(--stand)' : 'var(--text)';
+  document.getElementById('dr-label').textContent = decksRemaining.toFixed(1);
+}
+
+// ─── CARD GRID ───────────────────────────────────────────────────────────────
+const cardDefs = [
+  {label:'2',val:2,tag:+1,cls:'low'},{label:'3',val:3,tag:+1,cls:'low'},
+  {label:'4',val:4,tag:+1,cls:'low'},{label:'5',val:5,tag:+1,cls:'low'},
+  {label:'6',val:6,tag:+1,cls:'low'},{label:'7',val:7,tag:0,cls:'neutral'},
+  {label:'8',val:8,tag:0,cls:'neutral'},{label:'9',val:9,tag:0,cls:'neutral'},
+  {label:'10',val:10,tag:-1,cls:'high'},{label:'J',val:10,tag:-1,cls:'high'},
+  {label:'Q',val:10,tag:-1,cls:'high'},{label:'K',val:10,tag:-1,cls:'high'},
+  {label:'A',val:11,tag:-1,cls:'high'},
+];
+
+function buildCardGrid() {
+  const grid = document.getElementById('card-grid');
+  cardDefs.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'card-count-btn '+c.cls;
+    btn.innerHTML = `<span class="clbl">${c.label}</span><span class="ctag">${c.tag>0?'+1':c.tag<0?'−1':'0'}</span>`;
+    btn.onclick = () => {
+      const prevRC = runningCount;
+      runningCount += c.tag;
+      pushHistory({
+        icon: '👁', label: `Seen: ${c.label}`,
+        ...tagForCount(c.tag),
+        undo: () => { runningCount = prevRC; }
+      });
+      updateDisplays(); recalc();
+    };
+    grid.appendChild(btn);
+  });
+}
+
+// ─── BET ─────────────────────────────────────────────────────────────────────
+function recommendBet() {
+  const min = parseFloat(document.getElementById('min-bet').value)||10;
+  const max = parseFloat(document.getElementById('max-bet').value)||100;
+  const style = cddGet('cdd-spread') || 'conservative';
+  const tc = trueCount();
+  const spreads = {
+    aggressive:   [{tc:1,m:1},{tc:2,m:2},{tc:3,m:4},{tc:4,m:8},{tc:5,m:12}],
+    moderate:     [{tc:1,m:1},{tc:2,m:2},{tc:3,m:3},{tc:4,m:6},{tc:5,m:8}],
+    conservative: [{tc:1,m:1},{tc:2,m:1.5},{tc:3,m:2},{tc:4,m:3},{tc:5,m:4}],
+  };
+  let mult = 1;
+  if (tc > 0) for (const r of spreads[style]) { if (tc >= r.tc) mult = r.m; }
+  const bet = Math.min(Math.round(min*mult/5)*5, max);
+  const edge = tc<=0?'~house edge':tc<=1?'~neutral':`~+${(tc*0.5).toFixed(1)}% player`;
+  document.getElementById('bet-amount').textContent = '$'+bet;
+  document.getElementById('bet-edge').textContent = 'Edge: '+edge;
+  document.getElementById('bet-mult').textContent = mult+'× min bet';
+}
+
+// ─── HAND INFO ───────────────────────────────────────────────────────────────
+function getHandInfo() {
+  let total = handCards.reduce((a,b)=>a+b,0);
+  const hasAce = handCards.includes(11);
+  let soft = hasAce && isSoft;
+  if (total > 21 && hasAce) { total -= 10; soft = false; }
+  return {total, soft};
+}
+
+// ─── DECIDE ──────────────────────────────────────────────────────────────────
+function decide() {
+  const dealer = dealerCard;
+  const tc = trueCount();
+  const {total, soft} = getHandInfo();
+  const pair = handCards.length===2 && handCards[0]===handCards[1];
+  const pv = handCards[0];
+
+  document.getElementById('insurance-banner').classList.toggle('show', dealer===11 && tc>=3);
+
+  if (total===16&&dealer===9 &&tc>=2) return {action:'Su',label:'SURRENDER',color:'var(--surrender)',reason:'16 v 9 | TC '+tc.toFixed(1)+' ≥ +2'};
+  if (total===16&&dealer===10&&tc<0)  return {action:'H', label:'HIT',      color:'var(--hit)',      reason:'16 v 10 | TC '+tc.toFixed(1)+' < 0 → hit'};
+  if (total===16&&dealer===10)        return {action:'Su',label:'SURRENDER',color:'var(--surrender)',reason:'16 v 10 → surrender'};
+  if (total===16&&dealer===11&&tc>=3) return {action:'Su',label:'SURRENDER',color:'var(--surrender)',reason:'16 v A | TC '+tc.toFixed(1)+' ≥ +3'};
+  if (total===15&&dealer===10&&tc>=0) return {action:'Su',label:'SURRENDER',color:'var(--surrender)',reason:'15 v 10 | TC '+tc.toFixed(1)+' ≥ 0'};
+  if (total===15&&dealer===11&&tc>=2) return {action:'Su',label:'SURRENDER',color:'var(--surrender)',reason:'15 v A | TC '+tc.toFixed(1)+' ≥ +2'};
+
+  if (pair) {
+    if (pv===11) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'Always split aces'};
+    if (pv===8)  return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'Always split 8s'};
+    if (pv===10) return {action:'S', label:'STAND',color:'var(--stand)',reason:'Never split 10s'};
+    if (pv===9&&dealer!==7&&dealer!==10&&dealer!==11) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'9-9 vs non-7/10/A'};
+    if (pv===9) return {action:'S',label:'STAND',color:'var(--stand)',reason:'9-9 vs 7/10/A → stand'};
+    if (pv===7&&dealer>=2&&dealer<=7) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'7-7 vs 2-7'};
+    if (pv===6&&dealer>=2&&dealer<=6) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'6-6 vs 2-6'};
+    if ((pv===2||pv===3)&&dealer>=2&&dealer<=7) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:pv+'-'+pv+' vs 2-7'};
+    if (pv===4&&(dealer===5||dealer===6)) return {action:'Sp',label:'SPLIT',color:'var(--split)',reason:'4-4 vs 5-6'};
+  }
+
+  if (soft) {
+    if (total>=19) return {action:'S',label:'STAND',color:'var(--stand)',reason:'Soft '+total+' → stand'};
+    if (total===18) {
+      if (dealer>=2&&dealer<=6) return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'Soft 18 vs 2-6 → double'};
+      if (dealer>=9) return {action:'H',label:'HIT',color:'var(--hit)',reason:'Soft 18 vs 9+ → hit'};
+      return {action:'S',label:'STAND',color:'var(--stand)',reason:'Soft 18 vs 7-8 → stand'};
+    }
+    if (total===17) {
+      if (dealer>=3&&dealer<=6) return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'Soft 17 vs 3-6 → double'};
+      return {action:'H',label:'HIT',color:'var(--hit)',reason:'Soft 17 → hit'};
+    }
+    if (total===15||total===16) {
+      if (dealer>=4&&dealer<=6) return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'Soft '+total+' vs 4-6 → double'};
+      return {action:'H',label:'HIT',color:'var(--hit)',reason:'Soft '+total+' → hit'};
+    }
+    if (total===13||total===14) {
+      if (dealer>=5&&dealer<=6) return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'Soft '+total+' vs 5-6 → double'};
+      return {action:'H',label:'HIT',color:'var(--hit)',reason:'Soft '+total+' → hit'};
+    }
+    return {action:'H',label:'HIT',color:'var(--hit)',reason:'Soft hand → hit'};
+  }
+
+  if (total>=21) return {action:'S',label:'STAND',color:'var(--stand)',reason:'21 → stand'};
+  if (total>=17) return {action:'S',label:'STAND',color:'var(--stand)',reason:'Hard '+total+' → stand'};
+  if (total===16) {
+    if (dealer===9&&tc>=5) return {action:'S',label:'STAND',color:'var(--stand)',reason:'16 v 9 | TC '+tc.toFixed(1)+' ≥ +5'};
+    if (dealer<=6) return {action:'S',label:'STAND',color:'var(--stand)',reason:'16 vs 2-6 → stand'};
+    return {action:'H',label:'HIT',color:'var(--hit)',reason:'16 vs 7+ → hit'};
+  }
+  if (total===15) { return dealer<=6?{action:'S',label:'STAND',color:'var(--stand)',reason:'15 vs 2-6 → stand'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'15 vs 7+ → hit'}; }
+  if (total===14) { return dealer<=6?{action:'S',label:'STAND',color:'var(--stand)',reason:'14 vs 2-6 → stand'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'14 vs 7+ → hit'}; }
+  if (total===13) {
+    if (dealer===2&&tc>=-1) return {action:'S',label:'STAND',color:'var(--stand)',reason:'13 v 2 | TC '+tc.toFixed(1)+' ≥ -1'};
+    if (dealer===2) return {action:'H',label:'HIT',color:'var(--hit)',reason:'13 v 2 | TC '+tc.toFixed(1)+' < -1'};
+    return dealer<=6?{action:'S',label:'STAND',color:'var(--stand)',reason:'13 vs 3-6 → stand'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'13 vs 7+ → hit'};
+  }
+  if (total===12) {
+    if (dealer===2) return tc>=3?{action:'S',label:'STAND',color:'var(--stand)',reason:'12 v 2 | TC ≥ +3'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'12 v 2 | TC '+tc.toFixed(1)+' < +3'};
+    if (dealer===3) return tc>=2?{action:'S',label:'STAND',color:'var(--stand)',reason:'12 v 3 | TC ≥ +2'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'12 v 3 | TC '+tc.toFixed(1)+' < +2'};
+    if (dealer===4) return tc>=0?{action:'S',label:'STAND',color:'var(--stand)',reason:'12 v 4 | TC ≥ 0'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'12 v 4 | TC '+tc.toFixed(1)+' < 0'};
+    return dealer<=6?{action:'S',label:'STAND',color:'var(--stand)',reason:'12 vs 5-6 → stand'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'12 vs 7+ → hit'};
+  }
+  if (total===11) {
+    if (dealer===11) return tc>=1?{action:'D',label:'DOUBLE',color:'var(--double)',reason:'11 v A | TC ≥ +1'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'11 v A | TC '+tc.toFixed(1)+' < +1'};
+    return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'11 vs 2-10 → double'};
+  }
+  if (total===10) {
+    if (dealer===11) return tc>=4?{action:'D',label:'DOUBLE',color:'var(--double)',reason:'10 v A | TC ≥ +4'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'10 v A | TC '+tc.toFixed(1)+' < +4'};
+    if (dealer===10) return tc>=4?{action:'D',label:'DOUBLE',color:'var(--double)',reason:'10 v 10 | TC ≥ +4'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'10 v 10 | TC '+tc.toFixed(1)+' < +4'};
+    return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'10 vs 2-9 → double'};
+  }
+  if (total===9) {
+    if (dealer===2) return tc>=1?{action:'D',label:'DOUBLE',color:'var(--double)',reason:'9 v 2 | TC ≥ +1'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'9 v 2 | TC '+tc.toFixed(1)+' < +1'};
+    if (dealer===7) return tc>=3?{action:'D',label:'DOUBLE',color:'var(--double)',reason:'9 v 7 | TC ≥ +3'}:{action:'H',label:'HIT',color:'var(--hit)',reason:'9 v 7 | TC '+tc.toFixed(1)+' < +3'};
+    if (dealer>=3&&dealer<=6) return {action:'D',label:'DOUBLE',color:'var(--double)',reason:'9 vs 3-6 → double'};
+    return {action:'H',label:'HIT',color:'var(--hit)',reason:'9 vs 8+ → hit'};
+  }
+  return {action:'H',label:'HIT',color:'var(--hit)',reason:'Hard '+total+' → hit'};
+}
+
+// ─── RECALC ──────────────────────────────────────────────────────────────────
+function recalc() {
+  const result = decide();
+  const letter = document.getElementById('decision-letter');
+  const card   = document.getElementById('decision-card');
+  letter.textContent = result.action;
+  letter.style.color = result.color;
+  document.getElementById('decision-text').textContent   = result.label;
+  document.getElementById('decision-reason').textContent = result.reason;
+  const colorMap = {'var(--hit)':'#4ade80','var(--stand)':'#f87171','var(--double)':'#60a5fa','var(--split)':'#c084fc','var(--surrender)':'#fb923c'};
+  card.style.setProperty('--glow-color', colorMap[result.color]||'#fff');
+  letter.classList.remove('pop'); void letter.offsetWidth; letter.classList.add('pop');
+  setTimeout(()=>letter.classList.remove('pop'),150);
+
+  // Pending hit card
+  const canAdd = ['H','D'].includes(result.action);
+  const {total} = getHandInfo();
+  const existing = document.getElementById('pending-card-slot');
+  if (canAdd && total < 21 && !existing) {
+    const row = document.getElementById('hand-row');
+    const addSlot = document.createElement('div');
+    addSlot.className = 'hand-slot'; addSlot.id = 'pending-card-slot';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'hand-slot-lbl';
+    lbl.textContent = 'Card '+(handCards.length+1);
+    addSlot.appendChild(lbl);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'card-svg-wrap';
+    wrap.style.cssText = 'border:1.5px dashed rgba(74,222,128,0.4);border-radius:7px;';
+
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgEl.setAttribute('viewBox','0 0 56 80');
+    renderCardSVG(svgEl, 2, true);
+
+    const pendSel = document.createElement('select');
+    pendSel.className = 'card-select-hidden';
+    populateSelect(pendSel, 2);
+    pendSel.addEventListener('change', () => {
+      const newVal = parseInt(pendSel.value);
+      const prevRC = runningCount;
+      const prevHand = [...handCards];
+      runningCount += hiLoTag(newVal);
+      handCards.push(newVal);
+      pushHistory({
+        icon: '✋', label: `Hit: ${cardName(newVal)}`,
+        ...tagForCount(hiLoTag(newVal)),
+        undo: () => {
+          handCards.length = prevHand.length;
+          prevHand.forEach((v,i) => handCards[i] = v);
+          runningCount = prevRC;
+        }
+      });
+      renderHandRow(); updateDisplays(); recalc();
+    });
+
+    wrap.appendChild(svgEl); wrap.appendChild(pendSel); addSlot.appendChild(wrap);
+    row.appendChild(addSlot);
+  } else if (!canAdd || total>=21) {
+    if (existing) existing.remove();
+  }
+
+  recommendBet();
+}
+
+// ─── RESET HAND ──────────────────────────────────────────────────────────────
+function resetHand() {
+  handCards.forEach(v => { runningCount -= hiLoTag(v); });
+  handCards = [10, 3];
+  handCards.forEach(v => { runningCount += hiLoTag(v); });
+  isSoft = false;
+  pushHistory({ icon: '✋', label: 'Hand reset', tagText: null, tagClass: '', undo: () => {} });
+  renderHandRow(); updateDisplays(); recalc();
+}
+
+// ─── RESET ALL ───────────────────────────────────────────────────────────────
+function resetAll() {
+  runningCount = 0; decksRemaining = totalDecks;
+  handCards = [10, 3]; dealerCard = 11; isSoft = false;
+  renderCardSVG(document.getElementById('dealer-card-svg'), dealerCard, false);
+  const ds = document.getElementById('dealer-select');
+  for (const o of ds.options) { if (parseInt(o.value) === dealerCard) { o.selected = true; break; } }
+  clearHistory();
+  renderHandRow(); updateDisplays(); recalc();
+}
+
+// ─── SMART TOOLTIP ───────────────────────────────────────────────────────────
+(function() {
+  const GAP = 8, EDGE_PAD = 12;
+  document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
+    const icon = wrap.querySelector('.tooltip-icon');
+    const box  = wrap.querySelector('.tooltip-box');
+    if (!icon || !box) return;
+    function show() {
+      icon.classList.add('active');
+      box.classList.add('visible');
+      const bW = box.offsetWidth, bH = box.offsetHeight;
+      const r = icon.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      let left = r.left + r.width/2 - bW/2;
+      left = Math.max(EDGE_PAD, Math.min(left, vw - bW - EDGE_PAD));
+      const spaceAbove = r.top, spaceBelow = vh - r.bottom;
+      let top;
+      if (spaceAbove >= bH + GAP) top = r.top - bH - GAP;
+      else if (spaceBelow >= bH + GAP) top = r.bottom + GAP;
+      else top = spaceAbove >= spaceBelow ? Math.max(EDGE_PAD, r.top - bH - GAP) : r.bottom + GAP;
+      box.style.left = left + 'px';
+      box.style.top  = top  + 'px';
+    }
+    function hide() { icon.classList.remove('active'); box.classList.remove('visible'); }
+    wrap.addEventListener('mouseenter', show);
+    wrap.addEventListener('mouseleave', hide);
+    wrap.addEventListener('focusin',    show);
+    wrap.addEventListener('focusout',   hide);
+  });
+})();
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+populateSelect(document.getElementById('dealer-select'), dealerCard);
+renderCardSVG(document.getElementById('dealer-card-svg'), dealerCard, false);
+['d4','d6','d8'].forEach(id => document.getElementById(id).classList.remove('active'));
+document.getElementById('d8').classList.add('active');
+buildCardGrid();
+renderHandRow();
+updateDisplays();
+recalc();
+</script>
+</body>
+</html>
